@@ -6,12 +6,12 @@ CT-378 Machine Learning semester project. A scikit-learn pipeline classifies a h
 
 **Result (held-out test set, used once):** Random Forest - accuracy 0.995, macro-F1 0.921, ROC-AUC 0.999.
 
-## Deployment links  *(fill in after deploying - see USER_GUIDE.md)*
+## Deployment links  
 | Platform | Link |
 |---|---|
-| Streamlit Community Cloud | `https://YOUR-APP.streamlit.app` |
-| Hugging Face Space (Gradio) | `https://huggingface.co/spaces/YOUR-USERNAME/hids-demo` |
-| Hugging Face model card + pipeline | `https://huggingface.co/YOUR-USERNAME/hids-nsl-kdd-classifier` |
+| Streamlit Community Cloud | `https://host-ids.streamlit.app` |
+| Hugging Face Space (Gradio) | `https://huggingface.co/spaces/syed-huzaifa-10/hids-demo` |
+| Hugging Face model card + pipeline | `https://huggingface.co/syed-huzaifa-10/hids-nsl-kdd-classifier` |
 | Local Flask app | `http://127.0.0.1:5000` (run locally, see below) |
 
 ## Repository layout
