@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>HIDS - Intrusion Detection &amp; Automated Response</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --bg:#f6f6f4; --card:#fff; --ink:#0b0b0b; --muted:#52514e; --line:#dcdcd8; --blue:#2a78d6; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, Segoe UI, Roboto, sans-serif; background:var(--bg); color:var(--ink); }
+  header { background:#16233a; color:#fff; padding:18px 28px; }
+  header h1 { margin:0; font-size:20px; } header p { margin:4px 0 0; color:#b8c4d8; font-size:13px; }
+  main { max-width:1000px; margin:20px auto; padding:0 16px; display:grid; gap:16px; grid-template-columns: 1.2fr 1fr; }
+  @media (max-width:800px){ main{grid-template-columns:1fr;} }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 18px; }
+  h2 { font-size:15px; margin:0 0 10px; }
+  label { display:block; font-size:12px; color:var(--muted); margin-top:10px; }
+  input, select { width:100%; padding:7px 8px; border:1px solid var(--line); border-radius:6px; font-size:14px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:0 12px; }
+  button { margin-top:14px; padding:9px 16px; background:var(--blue); color:#fff; border:0; border-radius:6px; font-size:14px; cursor:pointer; }
+  button.secondary { background:#fff; color:var(--blue); border:1px solid var(--blue); margin-left:6px; }
+  .err { background:#fdecec; border:1px solid #e34948; color:#8a1f1e; padding:8px 10px; border-radius:6px; font-size:13px; margin-top:10px; }
+  .badge { display:inline-block; padding:3px 10px; border-radius:12px; color:#fff; font-weight:600; font-size:13px; }
+  .Normal{background:#2a78d6}.Probe{background:#1baf7a}.DoS{background:#eb6834}.R2L{background:#6250d6}.U2R{background:#e34948}
+  .bar { height:14px; background:#ecece8; border-radius:7px; overflow:hidden; margin-bottom:6px; }
+  .bar > div { height:100%; }
+  .row { display:flex; justify-content:space-between; font-size:12px; color:var(--muted); }
+  ul { padding-left:18px; margin:6px 0; } li { margin:3px 0; font-size:14px; }
+  .small { font-size:12px; color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Host-Based Intrusion Detection &amp; Automated Response (HIDS)</h1>
+  <p>Model: {{ meta.best_model }} &middot; test macro-F1 {{ '%.3f'|format(meta.test.macro_f1) }} &middot; classes: {{ meta.classes|join(', ') }}</p>
+</header>
+<main>
+  <section class="card">
+    <h2>Event details</h2>
+    <label>Load a real example event (optional)</label>
+    <select id="sample">
+      <option value="">-- choose an example --</option>
+      {% for s in samples %}<option value="{{ loop.index0 }}">{{ s.true_class }} example #{{ loop.index }}</option>{% endfor %}
+    </select>
+    <div class="grid" id="fields">
+      {% for f in top %}
+      <div>
+        <label for="{{ f }}">{{ f }}</label>
+        {% if f in choices %}
+          <select id="{{ f }}" data-f="{{ f }}">{% for c in choices[f] %}<option>{{ c }}</option>{% endfor %}</select>
+        {% else %}
+          <input id="{{ f }}" data-f="{{ f }}" type="number" step="any" min="0">
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    <p class="small">Only the {{ top|length }} most influential of the 41 features are shown. The rest use typical training values
+       (or the values of the chosen example).</p>
+    <button id="go">Analyse event</button><button class="secondary" id="reset" type="button">Reset</button>
+    <div id="error"></div>
+  </section>
+
+  <section class="card" id="result">
+    <h2>Verdict</h2>
+    <p class="small">Submit an event to see the prediction, confidence and automated response plan.</p>
+  </section>
+</main>
+
+<script>
+const DEFAULTS = {{ defaults|tojson }};
+const SAMPLES  = {{ samples|tojson }};
+const INFO     = {{ info|tojson }};
+const COL = {Normal:'#2a78d6',DoS:'#eb6834',Probe:'#1baf7a',R2L:'#6250d6',U2R:'#e34948'};
+let state = {...DEFAULTS};
+
+function fill(){ document.querySelectorAll('[data-f]').forEach(e => e.value = state[e.dataset.f]); }
+fill();
+
+document.getElementById('sample').addEventListener('change', e => {
+  if (e.target.value === '') return;
+  const s = {...SAMPLES[+e.target.value]}; delete s.true_class;
+  state = {...DEFAULTS, ...s}; fill();
+});
+document.getElementById('reset').addEventListener('click', () => {
+  state = {...DEFAULTS}; document.getElementById('sample').value=''; fill();
+  document.getElementById('error').innerHTML='';
+});
+
+document.getElementById('go').addEventListener('click', async () => {
+  const err = document.getElementById('error'); err.innerHTML = '';
+  document.querySelectorAll('[data-f]').forEach(e => state[e.dataset.f] = e.value);
+  let r;
+  try {
+    r = await fetch('/predict', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(state)});
+  } catch (e) { err.innerHTML = '<div class="err">Cannot reach the server.</div>'; return; }
+  const j = await r.json();
+  if (!r.ok) {
+    const d = (j.details || [j.error]).map(x => '<li>'+x+'</li>').join('');
+    err.innerHTML = '<div class="err"><b>' + j.error + '</b><ul>' + d + '</ul></div>'; return;
+  }
+  const bars = Object.entries(j.probabilities).sort((a,b)=>b[1]-a[1]).map(([k,v]) =>
+    `<div class="row"><span>${k}</span><span>${(v*100).toFixed(1)}%</span></div>
+     <div class="bar"><div style="width:${v*100}%;background:${COL[k]}"></div></div>`).join('');
+  document.getElementById('result').innerHTML = `
+    <h2>Verdict</h2>
+    <span class="badge ${j.prediction}">${j.prediction}</span>
+    <span class="small"> confidence ${(j.confidence*100).toFixed(1)}% &middot; severity: <b>${j.severity}</b></span>
+    <p class="small">${j.description}</p>
+    <h2>Automated response (${j.mode})</h2><ul>${j.actions.map(a=>'<li>'+a+'</li>').join('')}</ul>
+    <p class="small">Simulated: actions are logged, not executed on a real firewall.</p>
+    <h2>Class probabilities</h2>${bars}`;
+});
+</script>
+</body>
+</html>
